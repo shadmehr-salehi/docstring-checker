@@ -1,0 +1,6 @@
+- id: check-docstrings
+  name: Check for Args, Returns, and Raises in docstrings
+  description: Ensure function docstrings contain Args, Returns, and Raises sections.
+  entry: python check_docstrings.py
+  language: python
+  types: [python]
