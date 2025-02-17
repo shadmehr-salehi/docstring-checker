@@ -2,7 +2,7 @@ import ast
 import sys
 from pathlib import Path
 
-def generate_docstring(func_node):
+def generate_docstring(func_node, existing_docstring=None):
     """Generate a properly formatted docstring with dynamically sized underlines."""
     params = [arg.arg for arg in func_node.args.args]
     returns_annotation = (
@@ -11,7 +11,8 @@ def generate_docstring(func_node):
         or "None"
     ) if func_node.returns else "None"
 
-    docstring = '"""' + f"\n{func_node.name.replace('_', ' ').capitalize()}.\n\n"
+    description = existing_docstring if existing_docstring else f"{func_node.name.replace('_', ' ').capitalize()} function."
+    docstring = '"""' + f"\n{description}\n\n"
 
     if params:
         docstring += "Args:\n" + "-" * len("Args") + "\n"
@@ -42,21 +43,15 @@ def check_and_fix_docstrings(file_path):
                 and isinstance(node.body[0], ast.Expr)
                 and isinstance(getattr(node.body[0], 'value', None), (ast.Str, ast.Constant))
             )
-            if not has_proper_docstring:
-                print(f"Fixing missing docstring for function `{node.name}` in {file_path}:{node.lineno}")
-                new_docstring = generate_docstring(node)
-                if node.body:
-                    insert_position = node.body[0].lineno - 1
-                else:
-                    insert_position = node.lineno
-                indentation = " " * (node.col_offset + 4)
-                insertions.append((insert_position, f"{indentation}{new_docstring}\n"))
-            else:
-                for stmt in node.body[1:]:
-                    if isinstance(stmt, ast.Expr) and isinstance(getattr(stmt, 'value', None), (ast.Str, ast.Constant)):
-                        start = stmt.lineno - 1
-                        end = getattr(stmt, "end_lineno", stmt.lineno)
-                        removals.append((start, end))
+            existing_docstring = None
+            if has_proper_docstring:
+                existing_docstring = node.body[0].value.s.strip()
+                removals.append((node.body[0].lineno - 1, node.body[0].lineno))
+
+            new_docstring = generate_docstring(node, existing_docstring)
+            insert_position = node.body[0].lineno - 1 if has_proper_docstring else node.lineno
+            indentation = " " * (node.col_offset + 4)
+            insertions.append((insert_position, f"{indentation}{new_docstring}\n"))
 
     for start, end in sorted(removals, reverse=True):
         del updated_lines[start:end]
@@ -72,7 +67,7 @@ def main():
     files_to_check = [Path(f) for f in sys.argv[1:] if f.endswith(".py")]
     for file in files_to_check:
         check_and_fix_docstrings(file)
-    print("✅ Docstring checks complete. Misplaced docstrings were removed, and missing sections were added.")
+    print("✅ Docstring checks complete. Misplaced or missing docstrings were fixed.")
 
 if __name__ == "__main__":
     main()
