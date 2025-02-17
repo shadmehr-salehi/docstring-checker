@@ -36,7 +36,7 @@ def check_and_fix_docstrings(file_path):
     removals = []
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and not (node.name.startswith("_") and not node.name.startswith("__")):
+        if isinstance(node, ast.FunctionDef) and (not (node.name.startswith("_") or not node.name.startswith("__"))):
             has_proper_docstring = (
                 node.body
                 and isinstance(node.body[0], ast.Expr)
