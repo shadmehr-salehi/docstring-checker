@@ -11,7 +11,7 @@ def generate_docstring(func_node, existing_docstring=None):
         or "None"
     ) if func_node.returns else "None"
 
-    # Use existing docstring if present; otherwise, create a simple placeholder description.
+    # Use the existing docstring if present; otherwise, create placeholder text
     description = existing_docstring or f"{func_node.name.replace('_', ' ').capitalize()} function."
     docstring = '"""' + f"\n{description}\n\n"
 
@@ -38,53 +38,57 @@ def check_and_fix_docstrings(file_path):
 
     for node in ast.walk(tree):
         # 1) Must be a FunctionDef
-        # 2) Skip if name starts with '_' (private) or is a magic method (starts and ends with '__')
+        # 2) Skip if name starts with '_' (private) or is a magic method (dunder)
         if (
             isinstance(node, ast.FunctionDef)
             and not (
-                node.name.startswith('_')  # private methods
-                or (node.name.startswith('__') and node.name.endswith('__'))  # magic/dunder
+                node.name.startswith('_')  # private method
+                or (node.name.startswith('__') and node.name.endswith('__'))  # magic
             )
         ):
-            # Check if the first body statement is a string (docstring)
             first_body_item = node.body[0] if node.body else None
+            
+            # Check if the first body statement is actually a docstring
             has_proper_docstring = (
                 first_body_item
                 and isinstance(first_body_item, ast.Expr)
                 and isinstance(getattr(first_body_item, 'value', None), (ast.Str, ast.Constant))
             )
-
+            
             existing_docstring = None
             if has_proper_docstring:
                 # Extract the existing docstring text
                 existing_docstring = first_body_item.value.s.strip()
+                
+                # Remove ALL lines occupied by the original docstring
+                # Note: end_lineno is inclusive, so we do (+1) in the slice to remove that line too
+                start_line = first_body_item.lineno - 1  # -1 because list is 0-based vs AST is 1-based
+                end_line = first_body_item.end_lineno
+                removals.append((start_line, end_line + 1))
 
-                # Remove all lines of the docstring from source
-                # (We use end_lineno to handle multi-line docstrings properly)
-                removals.append((first_body_item.lineno - 1, first_body_item.end_lineno))
-
-            # Generate the new docstring text (or reuse existing text)
+            # Generate a new docstring (either from existing text or a placeholder)
             new_docstring = generate_docstring(node, existing_docstring)
 
             # Decide where to insert the new docstring
+            # If we had a docstring, insert at the old docstring's start line
+            # Otherwise, insert right after the function definition line
             insert_position = (
                 first_body_item.lineno - 1 if has_proper_docstring
                 else node.lineno
             )
 
-            # Indent the docstring to match the function’s body
+            # Indent the docstring to match function body
             indentation = " " * (node.col_offset + 4)
             insertions.append((insert_position, f"{indentation}{new_docstring}\n"))
 
-    # Apply removals in reverse order
+    # Apply removals in reverse
     for start, end in sorted(removals, reverse=True):
         del updated_lines[start:end]
 
-    # Apply insertions in reverse order
+    # Apply insertions in reverse
     for pos, text in sorted(insertions, reverse=True):
         updated_lines.insert(pos, text)
 
-    # Overwrite the file with the modified source
     with open(file_path, "w", encoding="utf-8") as file:
         file.writelines(updated_lines)
 
